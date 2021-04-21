@@ -1,5 +1,5 @@
 # sm2lib
-RSA算法的Go语言函数封装包
+RSA算法的Go语言包
 
 使用示例见单元测试文件`example_test.go`
 
