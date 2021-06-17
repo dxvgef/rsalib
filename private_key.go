@@ -105,7 +105,7 @@ func (privateKey *PrivateKey) FromHexFile(filePath string) error {
 }
 
 // 获得私钥原生类型
-func (privateKey *PrivateKey) ToRaw() *rsa.PrivateKey {
+func (privateKey PrivateKey) ToRaw() *rsa.PrivateKey {
 	return privateKey.key
 }
 

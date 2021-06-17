@@ -71,7 +71,7 @@ func (publicKey *PublicKey) FromHexFile(filePath string) (err error) {
 }
 
 // 公钥转为原生类型
-func (publicKey *PublicKey) ToRaw() *rsa.PublicKey {
+func (publicKey PublicKey) ToRaw() *rsa.PublicKey {
 	return publicKey.key
 }
 
