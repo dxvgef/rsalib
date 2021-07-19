@@ -1,4 +1,4 @@
-# sm2lib
+# rsalib
 RSA算法的Go语言包
 
 使用示例见单元测试文件`example_test.go`
