@@ -5,26 +5,54 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
-	"io/fs"
-	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 	"strings"
 )
 
 // 私钥
 type PrivateKey struct {
-	key *rsa.PrivateKey
-	// pkcsVersion PKCSVersion
+	key         *rsa.PrivateKey
+	pkcsVersion uint8
 }
 
 // 创建新私钥
 func (privateKey *PrivateKey) New(bits int) (err error) {
 	privateKey.key, err = rsa.GenerateKey(rand.Reader, bits)
+	return
+}
+
+// 从PEM文件中获得私钥
+func (privateKey *PrivateKey) FromPEMFile(filePath string) error {
+	var (
+		privateKeyRaw *rsa.PrivateKey
+		version       uint8
+	)
+
+	// 读取PEM文件
+	fileData, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return err
 	}
-	return nil
+
+	// 解析PEM区块（可能会有多个）
+	blocks := ParsePEMBlocks(fileData)
+
+	if len(blocks) == 0 {
+		log.Println("等于0")
+		log.Println(blocks)
+	}
+
+	// 解析私钥（仅解析一个，如有需要解析多个，可自行循环调用解析函数）
+	if privateKeyRaw, version, err = ParseRSAPrivateKey(blocks[0].Bytes); err != nil {
+		return err
+	}
+
+	privateKey.pkcsVersion = version
+	return privateKey.FromRaw(privateKeyRaw)
 }
 
 // 从原生类型中获得私钥
@@ -79,7 +107,7 @@ func (privateKey *PrivateKey) FromBase64(encoding *base64.Encoding, src []byte) 
 
 // 从Base64文件中获得私钥
 func (privateKey *PrivateKey) FromBase64File(encoding *base64.Encoding, filePath string) error {
-	fileData, err := ioutil.ReadFile(filepath.Clean(filePath))
+	fileData, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return err
 	}
@@ -97,7 +125,7 @@ func (privateKey *PrivateKey) FromHex(src []byte) error {
 
 // 从Hex文件中获得私钥
 func (privateKey *PrivateKey) FromHexFile(filePath string) error {
-	fileData, err := ioutil.ReadFile(filepath.Clean(filePath))
+	fileData, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		return err
 	}
@@ -110,15 +138,15 @@ func (privateKey PrivateKey) ToRaw() *rsa.PrivateKey {
 }
 
 // 获得私钥的[]byte类型
-func (privateKey *PrivateKey) ToRawBytes(version PKCSVersion) ([]byte, error) {
+func (privateKey *PrivateKey) ToRawBytes(version uint8) ([]byte, error) {
 	var (
 		err      error
 		keyBytes []byte
 	)
 	switch version {
-	case PKCS1:
+	case 1:
 		keyBytes = x509.MarshalPKCS1PrivateKey(privateKey.key)
-	case PKCS8:
+	case 8:
 		keyBytes, err = x509.MarshalPKCS8PrivateKey(privateKey.key)
 		if err != nil {
 			return nil, err
@@ -129,8 +157,26 @@ func (privateKey *PrivateKey) ToRawBytes(version PKCSVersion) ([]byte, error) {
 	return keyBytes, nil
 }
 
+// 私钥保存为PEM编码的文件
+func (privateKey *PrivateKey) ToPEMFile(version uint8, filePath string) error {
+	derStream := x509.MarshalPKCS1PrivateKey(privateKey.key)
+	typeStr := "RSA PRIVATE KEY"
+	if version == 8 {
+		typeStr = "PRIVATE KEY"
+	}
+	block := &pem.Block{
+		Type:  typeStr,
+		Bytes: derStream,
+	}
+	file, err := os.Create(filepath.Clean(filePath))
+	if err != nil {
+		return err
+	}
+	return pem.Encode(file, block)
+}
+
 // 私钥转为Base64数据
-func (privateKey *PrivateKey) ToBase64(encoding *base64.Encoding, version PKCSVersion) (data []byte, err error) {
+func (privateKey *PrivateKey) ToBase64(encoding *base64.Encoding, version uint8) (data []byte, err error) {
 	var buff []byte
 	buff, err = privateKey.ToRawBytes(version)
 	if err != nil {
@@ -140,18 +186,8 @@ func (privateKey *PrivateKey) ToBase64(encoding *base64.Encoding, version PKCSVe
 	return
 }
 
-// 私钥保存为Base64编码的文件
-func (privateKey *PrivateKey) ToBase64File(encoding *base64.Encoding, version PKCSVersion, filePath string, perm fs.FileMode) (err error) {
-	var buff []byte
-	buff, err = privateKey.ToBase64(encoding, version)
-	if err != nil {
-		return
-	}
-	return ioutil.WriteFile(filepath.Clean(filePath), buff, perm)
-}
-
 // 私钥转为Hex编码
-func (privateKey *PrivateKey) ToHex(version PKCSVersion) (data []byte, err error) {
+func (privateKey *PrivateKey) ToHex(version uint8) (data []byte, err error) {
 	var buff []byte
 	buff, err = privateKey.ToRawBytes(version)
 	if err != nil {
@@ -161,14 +197,9 @@ func (privateKey *PrivateKey) ToHex(version PKCSVersion) (data []byte, err error
 	return
 }
 
-// 私钥保存为Hex编码的文件
-func (privateKey *PrivateKey) ToHexFile(version PKCSVersion, filePath string, perm fs.FileMode) (err error) {
-	var buff []byte
-	buff, err = privateKey.ToHex(version)
-	if err != nil {
-		return
-	}
-	return ioutil.WriteFile(filepath.Clean(filePath), buff, perm)
+// 获得PKCS版本
+func (privateKey *PrivateKey) GetPKCSVersion() uint8 {
+	return privateKey.pkcsVersion
 }
 
 // 获得公钥
