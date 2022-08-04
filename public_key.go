@@ -4,13 +4,15 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
-	"io/fs"
-	"io/ioutil"
+	"encoding/pem"
+	"errors"
+	"os"
 	"path/filepath"
 )
 
 type PublicKey struct {
-	key *rsa.PublicKey
+	key         *rsa.PublicKey
+	pkcsVersion uint8
 }
 
 // 从原生类型中获得公钥
@@ -21,6 +23,60 @@ func (publicKey *PublicKey) FromRaw(src *rsa.PublicKey) {
 // 从[]byte中获得公钥
 func (publicKey *PublicKey) FromRawBytes(src []byte) (err error) {
 	publicKey.key, err = x509.ParsePKCS1PublicKey(src)
+	return
+}
+
+// 生成PEM文件
+func (publicKey *PublicKey) ToPEMFile(version uint8, filePath string) error {
+	buff, err := x509.MarshalPKIXPublicKey(publicKey.ToRaw())
+	if err != nil {
+		return err
+	}
+	typeStr := "RSA PUBLIC KEY"
+	if version == 8 {
+		typeStr = "PUBLIC KEY"
+	}
+	block := &pem.Block{
+		Type:  typeStr,
+		Bytes: buff,
+	}
+
+	var file *os.File
+	file, err = os.Create(filepath.Clean(filePath))
+	if err != nil {
+		return err
+	}
+	return pem.Encode(file, block)
+}
+
+// 从PEM文件中获得公钥
+func (publicKey *PublicKey) FromPEMFile(filePath string) (err error) {
+	var (
+		publicKeyRaw *rsa.PublicKey
+		version      uint8
+	)
+
+	// 读取PEM文件
+	fileData, err := os.ReadFile(filepath.Clean(filePath))
+	if err != nil {
+		return err
+	}
+
+	// 解析PEM区块（可能会有多个）
+	blocks := ParsePEMBlocks(fileData)
+
+	if len(blocks) == 0 {
+		err = errors.New("PEM文件无效")
+		return
+	}
+
+	// 解析私钥（仅解析一个，如有需要解析多个，可自行循环调用解析函数）
+	if publicKeyRaw, version, err = ParseRSAPublicKey(blocks[0].Bytes); err != nil {
+		return
+	}
+
+	publicKey.pkcsVersion = version
+	publicKey.FromRaw(publicKeyRaw)
 	return
 }
 
@@ -37,16 +93,6 @@ func (publicKey *PublicKey) FromBase64(encoding *base64.Encoding, src []byte) er
 	return nil
 }
 
-// 从Base64编码的文件中获得公钥
-func (publicKey *PublicKey) FromBase64File(encoding *base64.Encoding, filePath string) (err error) {
-	var fileData []byte
-	fileData, err = ioutil.ReadFile(filepath.Clean(filePath))
-	if err != nil {
-		return
-	}
-	return publicKey.FromBase64(encoding, fileData)
-}
-
 // 从Hex编码中获得公钥
 func (publicKey *PublicKey) FromHex(src []byte) error {
 	buff, err := HexDecode(src)
@@ -58,16 +104,6 @@ func (publicKey *PublicKey) FromHex(src []byte) error {
 		return err
 	}
 	return nil
-}
-
-// 从Hex编码的文件中获得公钥
-func (publicKey *PublicKey) FromHexFile(filePath string) (err error) {
-	var fileData []byte
-	fileData, err = ioutil.ReadFile(filepath.Clean(filePath))
-	if err != nil {
-		return
-	}
-	return publicKey.FromHex(fileData)
 }
 
 // 公钥转为原生类型
@@ -87,29 +123,9 @@ func (publicKey *PublicKey) ToBase64(encoding *base64.Encoding) (data []byte, er
 	return
 }
 
-// 公钥保存为Base64编码的文件
-func (publicKey *PublicKey) ToBase64File(encoding *base64.Encoding, filePath string, perm fs.FileMode) (err error) {
-	var buff []byte
-	buff, err = publicKey.ToBase64(encoding)
-	if err != nil {
-		return
-	}
-	return ioutil.WriteFile(filepath.Clean(filePath), buff, perm)
-}
-
 // 公钥转为Hex编码
 func (publicKey *PublicKey) ToHex() (data []byte, err error) {
 	buff := x509.MarshalPKCS1PublicKey(publicKey.key)
 	data = HexEncode(buff)
 	return
-}
-
-// 公钥保存为Hex编码的文件
-func (publicKey *PublicKey) ToHexFile(filePath string, perm fs.FileMode) (err error) {
-	var buff []byte
-	buff, err = publicKey.ToHex()
-	if err != nil {
-		return
-	}
-	return ioutil.WriteFile(filepath.Clean(filePath), buff, perm)
 }

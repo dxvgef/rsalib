@@ -123,15 +123,6 @@ func (privateKey *PrivateKey) FromHex(src []byte) error {
 	return privateKey.FromRawBytes(buff)
 }
 
-// 从Hex文件中获得私钥
-func (privateKey *PrivateKey) FromHexFile(filePath string) error {
-	fileData, err := os.ReadFile(filepath.Clean(filePath))
-	if err != nil {
-		return err
-	}
-	return privateKey.FromHex(fileData)
-}
-
 // 获得私钥原生类型
 func (privateKey PrivateKey) ToRaw() *rsa.PrivateKey {
 	return privateKey.key

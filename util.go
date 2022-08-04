@@ -83,7 +83,7 @@ func ParseRSAPrivateKey(data []byte) (privateKey *rsa.PrivateKey, version uint8,
 	// 尝试PKCS1
 	privateKey, err = ParsePKCS1PrivateKey(data)
 	if err != nil {
-		// 如果PKCS1和PKCS8，直认为无效
+		// 如果没提示要尝试使用PKCS8解析，直认为无效
 		if !strings.Contains(err.Error(), "PKCS8") {
 			return
 		}
@@ -120,29 +120,45 @@ func ParsePKCS8PrivateKey(data []byte) (privateKey *rsa.PrivateKey, err error) {
 	return
 }
 
-// ParseRSAPublicKey 解析RSA公钥
-func ParseRSAPublicKey(data []byte) (publicKey *rsa.PublicKey, err error) {
+// 解析RSA公钥，自动识别PKCS1和PKCS8
+func ParseRSAPublicKey(data []byte) (publicKey *rsa.PublicKey, version uint8, err error) {
+	version = 1
+	// 尝试PKCS1
+	publicKey, err = ParsePKCS1PublicKey(data)
+	if err != nil {
+		// 如果没提示要尝试使用PKIX解析，直认为无效
+		if !strings.Contains(err.Error(), "PKIX") {
+			return
+		}
+		// 尝试PKIX
+		publicKey, err = ParsePKIXPublicKey(data)
+		if err != nil {
+			return
+		}
+		version = 8
+	}
+	return
+}
+
+// 解析PKCS1公钥
+func ParsePKCS1PublicKey(data []byte) (*rsa.PublicKey, error) {
+	return x509.ParsePKCS1PublicKey(data)
+}
+
+// 解析PKIX公钥
+func ParsePKIXPublicKey(data []byte) (publicKey *rsa.PublicKey, err error) {
 	var (
 		parsedKey interface{}
 		ok        bool
-		cert      *x509.Certificate
 	)
-
 	parsedKey, err = x509.ParsePKIXPublicKey(data)
 	if err != nil {
-		cert, err = x509.ParseCertificate(data)
-		if err == nil {
-			parsedKey = cert.PublicKey
-		} else {
-			return
-		}
+		return
 	}
-
 	publicKey, ok = parsedKey.(*rsa.PublicKey)
 	if !ok {
 		err = errors.New("不是有效的RSA公钥")
 		return
 	}
-
 	return
 }
