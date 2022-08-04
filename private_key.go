@@ -159,14 +159,14 @@ func (privateKey *PrivateKey) ToRawBytes(version uint8) ([]byte, error) {
 
 // 私钥保存为PEM编码的文件
 func (privateKey *PrivateKey) ToPEMFile(version uint8, filePath string) error {
-	derStream := x509.MarshalPKCS1PrivateKey(privateKey.key)
+	buff := x509.MarshalPKCS1PrivateKey(privateKey.key)
 	typeStr := "RSA PRIVATE KEY"
 	if version == 8 {
 		typeStr = "PRIVATE KEY"
 	}
 	block := &pem.Block{
 		Type:  typeStr,
-		Bytes: derStream,
+		Bytes: buff,
 	}
 	file, err := os.Create(filepath.Clean(filePath))
 	if err != nil {
